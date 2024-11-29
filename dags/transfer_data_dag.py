@@ -3,12 +3,13 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
 
+
 def start_dag (**context):
     print(f"Начало работы дага - start ")
 
 
 
-def transfer_data(**context):
+def fetch_data(**context):
     
     # Подключение к базе данных через Airflow
     db_hook = PostgresHook(postgres_conn_id='postgres')  # ID подключения к БД в Airflow
@@ -19,6 +20,31 @@ def transfer_data(**context):
     cursor.execute("select name, department from \"IAD\".professors;")
     rows = cursor.fetchall()
 
+    # Закрытие соединения
+    # cursor.close()
+    # conn.close()
+
+    # Запись данных в XCom
+    context['ti'].xcom_push(key='professors_data', value=rows)
+    print(f"Данные из professors извлечены: {rows}")
+    return rows
+
+
+def insert_data(**context):
+     # Извлечение данных из XCom
+    ti = context['ti']
+    rows = ti.xcom_pull(key='professors_data', task_ids='select')
+    print(f"Полученные данные из XCom: {rows}")
+
+    if not rows:
+        raise ValueError("Нет данных для вставки в таблицу professors0!")
+
+
+    # Подключение к базе данных через Airflow
+    db_hook = PostgresHook(postgres_conn_id='postgres')
+    conn = db_hook.get_conn()
+    cursor = conn.cursor()
+
     # Вставка данных в таблицу professors0
     for row in rows:
         cursor.execute(
@@ -26,8 +52,12 @@ def transfer_data(**context):
         )
 
     conn.commit()
-    print(f"Данные из professors добавлены в professors0.")
-    
+
+    # Закрытие соединения
+    # cursor.close()
+    # conn.close()
+
+    print(f"Данные добавлены в professors0.")
 
 # Определение DAG
 with DAG(
@@ -44,8 +74,14 @@ with DAG(
         task_id='start',
         python_callable=start_dag
     )
-    transfer_task = PythonOperator(
-        task_id='transfer_data_task',
-        python_callable=transfer_data
+    select = PythonOperator(
+        task_id='select',
+        python_callable=fetch_data,
+        provide_context=True  # Включить передачу context в функцию
     )
-    start>>transfer_task
+    insert = PythonOperator(
+        task_id='insert',
+        python_callable=insert_data,
+        provide_context=True  # Включить передачу context в функцию
+    )
+    start>>select>>insert
