@@ -3,6 +3,10 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
 
+def start_dag (**context):
+    print(f"Начало работы дага - start ")
+
+
 
 def transfer_data(**context):
     
@@ -36,7 +40,12 @@ with DAG(
         'retry_delay': timedelta(minutes=1),
     },
 ) as dag:
+    start = PythonOperator(
+        task_id='start',
+        python_callable=start_dag
+    )
     transfer_task = PythonOperator(
         task_id='transfer_data_task',
         python_callable=transfer_data
     )
+    start>>transfer_task
