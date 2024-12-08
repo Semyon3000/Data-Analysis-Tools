@@ -2,7 +2,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from datetime import datetime, timedelta
-
+from airflow.decorators import task_group  # Импорт декоратора task_group
 
 def start_dag (**context):
     print(f"Начало работы дага - start ")
@@ -59,6 +59,9 @@ def insert_data(**context):
 
     print(f"Данные добавлены в professors0.")
 
+def stop_dag (**context):
+    print(f"Конец работы дага - stop ")
+
 # Определение DAG
 with DAG(
     dag_id='transfer_data_dag',
@@ -79,9 +82,18 @@ with DAG(
         python_callable=fetch_data,
         provide_context=True  # Включить передачу context в функцию
     )
-    insert = PythonOperator(
-        task_id='insert',
-        python_callable=insert_data,
-        provide_context=True  # Включить передачу context в функцию
+    @task_group
+    def insert():
+        insert = PythonOperator(
+            task_id='insert',
+            python_callable=insert_data,
+            provide_context=True  # Включить передачу context в функцию
+        )
+    stop = PythonOperator(
+        task_id='stop',
+        python_callable=stop_dag,
+        provide_context=True 
     )
-    start>>select>>insert
+    
+    start>>select>>[insert() for _ in range(3)]>>stop
+    
